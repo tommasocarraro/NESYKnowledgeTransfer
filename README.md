@@ -1,7 +1,7 @@
-# A Neuro-Symbolic Approach to Cross-Domain-Recommendation
+# Mitigating Data Sparsity via Feature-based Neuro-Symbolic Knowledge Transfer
 
-This repository contains the implementation for the paper "A Neuro-Symbolic Approach to Cross-Domain-Recommendation"
-that is under submission at RecSys 2023. The entire code has been well documented to allow reviewers to understand 
+This repository contains the implementation for the paper "Mitigating Data Sparsity via Feature-based Neuro-Symbolic Knowledge Transfer"
+that is under submission at the KARS workshop of RecSys 2023. The entire code has been well documented to allow reviewers to understand 
 the logic if needed.
 
 ### Directory structure
