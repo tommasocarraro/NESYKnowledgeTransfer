@@ -89,6 +89,16 @@ best_config_mf_200k = {
     "tr_batch_size": 256,
     "wd": 0.00005
 }
+# Best configuration for the baseline MF model with genre latent factors
+best_config_mf_genres_200k = {
+    "alpha": 0.3,
+    "gamma": 0,
+    "k": 25,
+    "lr": 0.01,
+    "tr_batch_size": 256,
+    "wd": 0.00005,
+    "threshold": 0.5
+}
 # Configurations for MindReader-100k
 # Best configuration for the baseline MF model
 best_config_mf_100k = {
@@ -97,6 +107,16 @@ best_config_mf_100k = {
     "k": 50,
     "lr": 0.01,
     "tr_batch_size": 256,
+    "wd": 0.00005,
+    "threshold": 0.5
+}
+# Best configuration for the baseline MF model with genre latent factors
+best_config_mf_genres_100k = {
+    "alpha": 0.3,
+    "gamma": 0,
+    "k": 25,
+    "lr": 0.001,
+    "tr_batch_size": 64,
     "wd": 0.00005,
     "threshold": 0.5
 }

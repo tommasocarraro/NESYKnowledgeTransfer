@@ -50,7 +50,7 @@ def generate_report_dict(results_path, metrics):
     # iterate over result files in the directory
     files = Path(results_path).glob('*')
     for file in files:
-        if "genres" not in file.name:
+        if "-genres-" not in file.name:
             # get file metadata
             metadata = file.name.split("-")
             model_name = metadata[0]

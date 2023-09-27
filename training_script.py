@@ -5,9 +5,10 @@ from nesy.loaders import DataLoader
 from nesy.training import mf_training, nesy_training
 from nesy.utils import generate_report_dict, generate_report_table
 import json
+import numpy as np
 from joblib import Parallel, delayed
 from nesy.configs import best_config_nesy_100k, best_config_nesy_200k, best_config_mf_100k, best_config_mf_200k, \
-    best_config_genres_100k, best_config_genres_200k
+    best_config_genres_100k, best_config_genres_200k, best_config_mf_genres_100k, best_config_mf_genres_200k
 
 
 def create_dataset(seed, percentages, data_path, version):
@@ -35,7 +36,7 @@ def create_dataset(seed, percentages, data_path, version):
             pickle.dump(data, dataset_file)
 
 
-def train_model(seed, p, model, config_mf, config_nesy, source_config, exp_name):
+def train_model(seed, p, model, config_mf, config_mf_genres, config_nesy, source_config, exp_name):
     """
     It trains the given model with the correct hyper-parameter configuration on the given fold, denoted as p.
     If model == "nesy", the source config is used to pre-train an MF model on the source domain.
@@ -45,6 +46,8 @@ def train_model(seed, p, model, config_mf, config_nesy, source_config, exp_name)
     :param p: it specifies the fold on which the model has to be trained
     :param model: str specifying the model that has to be trained
     :param config_mf: hyper-parameter configuration for the training of the baseline MF model
+    :param config_mf_genres: hyper-parameter configuration for the training of the baseline MF model with the addition
+    of genre latent factors
     :param config_nesy: hyper-parameter configuration for the training of the Neuro-Symbolic model
     :param source_config: hyper-parameter configuration for pre-training the MF model on the source domain when
     model == "nesy"
@@ -65,6 +68,13 @@ def train_model(seed, p, model, config_mf, config_nesy, source_config, exp_name)
             _, test_result = mf_training(seed, data["p"][p], data["i_val"], data["n_users"], data["n_items"],
                                          config_mf, metric="fbeta-1.0", test_loader=test_loader,
                                          path="%s/models/%s.pth" % (exp_name, file_name))
+        elif model == 'MF_genres':
+            # note the genre ratings are added to the training set
+            # note the number of items for the MF model becomes n_genres + n_items because we added genres
+            _, test_result = mf_training(seed, np.append(data["p"][p], data["mf_g_ratings"], axis=0), data["i_val"],
+                                         data["n_users"], data["n_items"] + data["n_genres"],
+                                         config_mf_genres, metric="fbeta-1.0", test_loader=test_loader,
+                                         path="%s/models/%s.pth" % (exp_name, file_name))
         else:
             # pre-train an MF model on the source domain
             user_genres_matrix, _ = mf_training(seed, data["g_tr"], data["g_val"], data["n_users"], data["n_genres"],
@@ -81,8 +91,8 @@ def train_model(seed, p, model, config_mf, config_nesy, source_config, exp_name)
             json.dump(test_result, outfile, indent=4)
 
 
-def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'nesy'), starting_seed=0, n_runs=1,
-                   dataset_version="mindreader-200k", n_jobs=os.cpu_count()):
+def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'MF-genres', 'nesy'), starting_seed=0,
+                   n_runs=1, dataset_version="mindreader-200k", n_jobs=os.cpu_count(), just_report=False):
     """
     This function runs the entire experiment for the paper. The experiment consists of the following steps:
     1. dataset creation: it includes the creation of the datasets with different sparsity levels (specified
@@ -106,27 +116,30 @@ def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'ne
     :param dataset_version: version of the dataset on which the experiment has to be performed ('mindreader-100k' or
     'mindreader-200k')
     :param n_jobs: number of processors to be used for running the experiment
+    :param just_report: whether the function has just to generate the report of results, in the case the results have
+    been already computed and pasted to the experiment folder. Defaults to False
     :return:
     """
-    # creating folders for the experiments
-    if not os.path.exists(exp_name):
-        os.mkdir(exp_name)
-        os.mkdir(os.path.join(exp_name, "datasets"))
-        os.mkdir(os.path.join(exp_name, "models"))
-        os.mkdir(os.path.join(exp_name, "results"))
+    if not just_report:
+        # creating folders for the experiments
+        if not os.path.exists(exp_name):
+            os.mkdir(exp_name)
+            os.mkdir(os.path.join(exp_name, "datasets"))
+            os.mkdir(os.path.join(exp_name, "models"))
+            os.mkdir(os.path.join(exp_name, "results"))
 
-    # create datasets for the experiment
-    Parallel(n_jobs=n_jobs)(
-        delayed(create_dataset)(seed, percentages, os.path.join(exp_name, "datasets"), dataset_version)
-        for seed in range(starting_seed, starting_seed + n_runs))
+        # create datasets for the experiment
+        Parallel(n_jobs=n_jobs)(
+            delayed(create_dataset)(seed, percentages, os.path.join(exp_name, "datasets"), dataset_version)
+            for seed in range(starting_seed, starting_seed + n_runs))
 
-    # perform training of the models and get results on the test set
-    Parallel(n_jobs=n_jobs)(
-        delayed(train_model)(seed, p, m, config_dict[dataset_version]["mf"], config_dict[dataset_version]["nesy"],
-                             config_dict[dataset_version]["source"], exp_name)
-        for seed in range(starting_seed, starting_seed + n_runs)
-        for p in percentages
-        for m in models)
+        # perform training of the models and get results on the test set
+        Parallel(n_jobs=n_jobs)(
+            delayed(train_model)(seed, p, m, config_dict[dataset_version]["mf"], config_dict[dataset_version]["mf_genres"],
+                                 config_dict[dataset_version]["nesy"], config_dict[dataset_version]["source"], exp_name)
+            for seed in range(starting_seed, starting_seed + n_runs)
+            for p in percentages
+            for m in models)
 
     # generate report table
     generate_report_dict(os.path.join(exp_name, "results"), ("neg_prec", "neg_rec", "neg_f"))
@@ -135,6 +148,7 @@ def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'ne
                                    "neg_rec": "\\texttt{Recall}",
                                    "neg_f": "\\texttt{F1-measure}"},
                                   {"MF": "$\\operatorname{MF}$",
+                                   "MF_genres": "$\\operatorname{MF_{genres}}$",
                                    "nesy": "$\\operatorname{NESY_{MF}}$"}, models=models)
     # save table to disk
     with open(os.path.join(exp_name, "report-table.txt"), "w") as table_file:
@@ -151,19 +165,21 @@ if __name__ == "__main__":
         'mindreader-100k': {
             "source": best_config_genres_100k,
             "mf": best_config_mf_100k,
+            "mf_genres": best_config_mf_genres_100k,
             "nesy": best_config_nesy_100k
         },
         'mindreader-200k': {
             "source": best_config_genres_200k,
             "mf": best_config_mf_200k,
+            "mf_genres": best_config_mf_genres_200k,
             "nesy": best_config_nesy_200k
         }
     }
     # perform the experiments on MindReader-200k
     run_experiment("exp-mindreader-200k", config_dict=configs, percentages=(1.0, 0.5, 0.2, 0.1, 0.05),
-                   models=('MF', 'nesy'), starting_seed=0, n_runs=30, dataset_version="mindreader-200k",
+                   models=('MF', 'MF-genres', 'nesy'), starting_seed=0, n_runs=30, dataset_version="mindreader-200k",
                    n_jobs=os.cpu_count())
-    # perform the experiments on MindReader-100k
+    # # perform the experiments on MindReader-100k
     run_experiment("exp-mindreader-100k", config_dict=configs, percentages=(1.0, 0.5, 0.2, 0.1, 0.05),
-                   models=('MF', 'nesy'), starting_seed=0, n_runs=30, dataset_version="mindreader-100k",
+                   models=('MF', 'MF-genres', 'nesy'), starting_seed=0, n_runs=30, dataset_version="mindreader-100k",
                    n_jobs=os.cpu_count())

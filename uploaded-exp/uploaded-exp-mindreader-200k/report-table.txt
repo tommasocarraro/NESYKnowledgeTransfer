@@ -1,28 +1,28 @@
 \begin{table*}[ht!]
 \centering
 \small
-\begin{tabular}{ l | l | c | c }
-Fold & Metric & $\operatorname{MF}$ & $\operatorname{NESY_{MF}}$\\
+\begin{tabular}{ l | l | c | c | c }
+Fold & Metric & $\operatorname{MF}$ & $\operatorname{MF_{genres}}$ & $\operatorname{NESY_{MF}}$\\
 \hline
-\multirow{3}{*}{100\%} & \texttt{Precision} & \textbf{0.5640}$_{(0.0560)}$ & 0.5531$_{(0.0503)}$\\
- & \texttt{Recall} & 0.7555$_{(0.0333)}$ & \textbf{0.7931}$_{(0.0207)}$\\
- & \texttt{F1-measure} & 0.6431$_{(0.0341)}$ & \textbf{0.6498}$_{(0.0334)}$\\
+\multirow{3}{*}{100\%} & \texttt{Precision} & \textbf{0.5640}$_{(0.0560)}$ & 0.5550$_{(0.0561)}$ & 0.5531$_{(0.0503)}$\\
+ & \texttt{Recall} & 0.7555$_{(0.0333)}$ & 0.7500$_{(0.0336)}$ & \textbf{0.7931}$_{(0.0207)}$\\
+ & \texttt{F1-measure} & 0.6431$_{(0.0341)}$ & 0.6350$_{(0.0333)}$ & \textbf{0.6498}$_{(0.0334)}$\\
 \hline
-\multirow{3}{*}{50\%} & \texttt{Precision} & \textbf{0.5510}$_{(0.0554)}$ & 0.5415$_{(0.0491)}$\\
- & \texttt{Recall} & 0.6893$_{(0.0332)}$ & \textbf{0.7240}$_{(0.0195)}$\\
- & \texttt{F1-measure} & 0.6095$_{(0.0300)}$ & \textbf{0.6178}$_{(0.0306)}$\\
+\multirow{3}{*}{50\%} & \texttt{Precision} & \textbf{0.5510}$_{(0.0554)}$ & 0.5428$_{(0.0550)}$ & 0.5415$_{(0.0491)}$\\
+ & \texttt{Recall} & 0.6893$_{(0.0332)}$ & 0.7057$_{(0.0337)}$ & \textbf{0.7240}$_{(0.0195)}$\\
+ & \texttt{F1-measure} & 0.6095$_{(0.0300)}$ & 0.6106$_{(0.0304)}$ & \textbf{0.6178}$_{(0.0306)}$\\
 \hline
-\multirow{3}{*}{20\%} & \texttt{Precision} & \textbf{0.5093}$_{(0.0499)}$ & 0.5050$_{(0.0474)}$\\
- & \texttt{Recall} & 0.5838$_{(0.0302)}$ & \textbf{0.6459}$_{(0.0171)}$\\
- & \texttt{F1-measure} & 0.5413$_{(0.0231)}$ & \textbf{0.5650}$_{(0.0286)}$\\
+\multirow{3}{*}{20\%} & \texttt{Precision} & 0.5093$_{(0.0499)}$ & \textbf{0.5169}$_{(0.0523)}$ & 0.5050$_{(0.0474)}$\\
+ & \texttt{Recall} & 0.5838$_{(0.0302)}$ & 0.6318$_{(0.0298)}$ & \textbf{0.6459}$_{(0.0171)}$\\
+ & \texttt{F1-measure} & 0.5413$_{(0.0231)}$ & \textbf{0.5657}$_{(0.0261)}$ & 0.5650$_{(0.0286)}$\\
 \hline
-\multirow{3}{*}{10\%} & \texttt{Precision} & \textbf{0.4806}$_{(0.0469)}$ & 0.4725$_{(0.0441)}$\\
- & \texttt{Recall} & 0.5359$_{(0.0283)}$ & \textbf{0.6067}$_{(0.0193)}$\\
- & \texttt{F1-measure} & 0.5041$_{(0.0202)}$ & \textbf{0.5295}$_{(0.0258)}$\\
+\multirow{3}{*}{10\%} & \texttt{Precision} & 0.4806$_{(0.0469)}$ & \textbf{0.4938}$_{(0.0478)}$ & 0.4725$_{(0.0441)}$\\
+ & \texttt{Recall} & 0.5359$_{(0.0283)}$ & 0.5726$_{(0.0292)}$ & \textbf{0.6067}$_{(0.0193)}$\\
+ & \texttt{F1-measure} & 0.5041$_{(0.0202)}$ & 0.5276$_{(0.0215)}$ & \textbf{0.5295}$_{(0.0258)}$\\
 \hline
-\multirow{3}{*}{5\%} & \texttt{Precision} & \textbf{0.4508}$_{(0.0438)}$ & 0.4422$_{(0.0428)}$\\
- & \texttt{Recall} & 0.5049$_{(0.0257)}$ & \textbf{0.5953}$_{(0.0203)}$\\
- & \texttt{F1-measure} & 0.4740$_{(0.0193)}$ & \textbf{0.5057}$_{(0.0273)}$\\
+\multirow{3}{*}{5\%} & \texttt{Precision} & 0.4508$_{(0.0438)}$ & \textbf{0.4740}$_{(0.0481)}$ & 0.4422$_{(0.0428)}$\\
+ & \texttt{Recall} & 0.5049$_{(0.0257)}$ & 0.5281$_{(0.0253)}$ & \textbf{0.5953}$_{(0.0203)}$\\
+ & \texttt{F1-measure} & 0.4740$_{(0.0193)}$ & 0.4971$_{(0.0217)}$ & \textbf{0.5057}$_{(0.0273)}$\\
 \hline
 \end{tabular}
 \caption{Test metrics}

@@ -1,3 +1,5 @@
+import copy
+
 import pandas as pd
 import os
 from sklearn.model_selection import train_test_split as train_test_split_sklearn
@@ -152,8 +154,18 @@ def process_mindreader(seed, version, genre_val_size=0.2, genre_user_level_split
     i_g_matrix = csr_matrix((np.ones(len(mr_genre_triples)),
                              (list(mr_genre_triples["head_uri"]),
                               list(mr_genre_triples["tail_uri"]))), shape=(n_items, n_genres))
+    # create dataset for the MF baseline which also learns genre latent factors - they are treated as additional items
+    # create new indexing for genres in such a way the first genre index starts after the last movie index
+    # this is done because in the matrix of item latent factors, the first latent factors are dedicated to movies,
+    # while the last latent factors to genres
+    int_g_ids = list(range(n_items, len(g_ids) + n_items))
+    g_new_indexing = dict(zip(list(range(len(g_ids))), int_g_ids))
+    # set new indexing in the dataframe containing the genre ratings - this creates a new dataframe with the new indexes
+    # in the main script, this dataframe will be added to the dataframe containing movie ratings to complete the dataset
+    mf_genre_ratings = copy.deepcopy(g_train_set)
+    mf_genre_ratings["uri"] = mf_genre_ratings["uri"].replace(g_new_indexing)
 
     return {"n_users": n_users, "n_genres": n_genres, "n_items": n_items, "g_tr": g_train_set.to_numpy(),
             "g_val": g_val_set.to_numpy(), "i_tr": train_set.to_numpy(), "i_tr_small": train_set_small.to_numpy(),
             "i_val": val_set.to_numpy(), "i_test": test_set.to_numpy(),
-            "i_g_matrix": torch.tensor(i_g_matrix.toarray())}
+            "i_g_matrix": torch.tensor(i_g_matrix.toarray()), "mf_g_ratings": mf_genre_ratings.to_numpy()}
