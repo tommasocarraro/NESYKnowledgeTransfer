@@ -130,6 +130,7 @@ def process_mindreader(seed, version, genre_val_size=0.2, genre_user_level_split
     genre_ratings = genre_ratings.replace(user_string_to_id).replace(g_string_to_id).reset_index(drop=True)
     movie_ratings = movie_ratings.replace(user_string_to_id).replace(i_string_to_id).reset_index(drop=True)
     # convert negative ratings from -1 to 0
+    original_genre_ratings = genre_ratings["sentiment"]
     genre_ratings = genre_ratings.replace(-1, 0)
     movie_ratings = movie_ratings.replace(-1, 0)
     # get number of users, genres, and movies
@@ -154,6 +155,15 @@ def process_mindreader(seed, version, genre_val_size=0.2, genre_user_level_split
     i_g_matrix = csr_matrix((np.ones(len(mr_genre_triples)),
                              (list(mr_genre_triples["head_uri"]),
                               list(mr_genre_triples["tail_uri"]))), shape=(n_items, n_genres))
+    # construct the user X genre matrix of preferences
+    genre_ratings = genre_ratings.to_numpy()
+    u_g_matrix = csr_matrix((original_genre_ratings, (genre_ratings[:, 0], genre_ratings[:, 1])),
+                            shape=(n_users, n_genres))
+    u_g_matrix = torch.tensor(u_g_matrix.toarray())
+    # create user X genres matrix for training the LTN baseline from "Logic Tensor Networks for Top-N Recommendation"
+    # we put 0. in all the positions where the user dislikes a genre, and 1. in all the other positions
+    # by doing so, we can use the same data loader and trainer that we use for our NeSy approach
+    u_g_matrix_for_ltn = torch.where(u_g_matrix == -1., 0., 1.)
     # create dataset for the MF baseline which also learns genre latent factors - they are treated as additional items
     # create new indexing for genres in such a way the first genre index starts after the last movie index
     # this is done because in the matrix of item latent factors, the first latent factors are dedicated to movies,
@@ -164,8 +174,61 @@ def process_mindreader(seed, version, genre_val_size=0.2, genre_user_level_split
     # in the main script, this dataframe will be added to the dataframe containing movie ratings to complete the dataset
     mf_genre_ratings = copy.deepcopy(g_train_set)
     mf_genre_ratings["uri"] = mf_genre_ratings["uri"].replace(g_new_indexing)
+    # get list of genre indexes for each interaction of the training dataset - this serves for training Factorization
+    # Machine with movie genres as side information
+    get_genre_ids = lambda idx: torch.tensor(i_g_matrix[idx].nonzero()[1])
+    genres_for_tr_interactions = list(map(get_genre_ids, train_set_small["uri"]))
+    genres_for_val_interactions = list(map(get_genre_ids, val_set["uri"]))
+    genres_for_test_interactions = list(map(get_genre_ids, test_set["uri"]))
+
+    def pad_tensors(data):
+        """
+        Function to pad the tensors containing genre side information for the user-item interactions in the dataset.
+        This kind of data is used for training the Factorization Machine model.
+
+        Padding is done to make operations more efficient during the training of the FM model. The idea is to have
+        all the tensors containing genre information of the same shape in order to exploit pytorch tensors operations.
+
+        :param data: list of tensors containing indexes of the movie genres for the user-item interactions in the
+        dataset. Each item in the list corresponds to one row (i.e., user-item pair) in the dataset.
+
+        Returns a pytorch tensor containing the same information as input. In particular, each row is of the same
+        length to make operations efficient during the training of the FM model. The function computes the maximum
+        number of genres a movie can belong to, and then pads all the rows with a smaller number of genres (smaller
+        than maximum) with a fake genre index that during training is associated with a null embedding that does not
+        change and does not affect loss computation. This makes everything efficient and tensor operations possible.
+
+        Example:
+        [1, 2, 3]
+        [4, 5, 6, 7, 8]
+        [1, 4, 10]
+
+        The function returns the following tensor:
+        [[1, 2, 3, f, f],
+         [4, 5, 6, 7, 8],
+         [1, 4, 10, f, f]]
+
+        f is used as the fake index in this example. The second row is the one with the maximum number of genres, so
+        each other row is padded to reach its length.
+        """
+        # Determine maximum length
+        max_len = max([x.squeeze().numel() for x in data])
+
+        # pad all tensors to have same length
+        data = [torch.nn.functional.pad(x, pad=(0, max_len - x.numel()), mode='constant', value=n_genres) for x in data]
+
+        # stack them
+        data = torch.stack(data)
+
+        return data
+
+    genres_for_tr_interactions = pad_tensors(genres_for_tr_interactions)
+    genres_for_val_interactions = pad_tensors(genres_for_val_interactions)
+    genres_for_test_interactions = pad_tensors(genres_for_test_interactions)
 
     return {"n_users": n_users, "n_genres": n_genres, "n_items": n_items, "g_tr": g_train_set.to_numpy(),
             "g_val": g_val_set.to_numpy(), "i_tr": train_set.to_numpy(), "i_tr_small": train_set_small.to_numpy(),
             "i_val": val_set.to_numpy(), "i_test": test_set.to_numpy(),
-            "i_g_matrix": torch.tensor(i_g_matrix.toarray()), "mf_g_ratings": mf_genre_ratings.to_numpy()}
+            "i_g_matrix": torch.tensor(i_g_matrix.toarray()), "mf_g_ratings": mf_genre_ratings.to_numpy(),
+            "genres_tr": genres_for_tr_interactions, "genres_val": genres_for_val_interactions,
+            "genres_test": genres_for_test_interactions, "u_g_matrix": u_g_matrix_for_ltn}

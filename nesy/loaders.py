@@ -9,6 +9,7 @@ class LTNDataLoader:
 
     It prepares the batches of positive, negative, and unknown user-item pairs to learn the LTN model.
     """
+
     def __init__(self,
                  data,
                  n_users,
@@ -74,6 +75,7 @@ class DataLoader:
 
     It prepares the batches of user-item pairs to learn the MF model or evaluate all the models.
     """
+
     def __init__(self,
                  data,
                  batch_size=1,
@@ -105,3 +107,50 @@ class DataLoader:
             ratings = data[:, -1]
 
             yield torch.tensor(u_i_pairs), torch.tensor(ratings).float()
+
+
+class DataLoaderFM:
+    """
+    Data loader for the training of the FM model. Note this model uses movie genres as side information.
+
+    It prepares the batches of user-item pairs + side features to learn the FM model. It has to be used for validation
+    and test of the FM model too. Each example returned by this loader consists of a user index, an item index, and
+    a set of movie genres indexes associated with the movie in the user-item pair.
+    """
+
+    def __init__(self,
+                 data,
+                 side_info,
+                 batch_size=1,
+                 shuffle=True):
+        """
+        Constructor of the data loader.
+
+        :param data: list of training/evaluation triples (user, item, rating)
+        :param side_info: tensor of pre-computed side information for related user-item pairs (movie genre indexes in
+        our scenario)
+        :param batch_size: batch size for the training/evaluation of the model
+        :param shuffle: whether to shuffle data during training/evaluation or not
+        """
+        self.data = np.array(data)
+        self.side_info = side_info
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+    def __len__(self):
+        return int(np.ceil(self.data.shape[0] / self.batch_size))
+
+    def __iter__(self):
+        n = self.data.shape[0]
+        idxlist = list(range(n))
+        if self.shuffle:
+            np.random.shuffle(idxlist)
+
+        for _, start_idx in enumerate(range(0, n, self.batch_size)):
+            end_idx = min(start_idx + self.batch_size, n)
+            data = self.data[idxlist[start_idx:end_idx]]
+            side_info = self.side_info[idxlist[start_idx:end_idx]]
+            u_i_pairs = data[:, :2]
+            ratings = data[:, -1]
+
+            yield torch.hstack([torch.tensor(u_i_pairs), side_info]), torch.tensor(ratings).float()

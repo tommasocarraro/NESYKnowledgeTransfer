@@ -99,6 +99,28 @@ best_config_mf_genres_200k = {
     "wd": 0.00005,
     "threshold": 0.5
 }
+# Best configuration for the baseline FM model with movie genres as side info
+best_config_fm_200k = {
+    "alpha": 0.3,
+    "gamma": 2,
+    "k": 25,
+    "lr": 0.001,
+    "tr_batch_size": 128,
+    "wd": 0.00005,
+    "threshold": 0.5
+}
+# Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation
+best_config_ltn_200k = {
+    "k": 25,
+    "lr": 0.001,
+    "wd": 0.00005,
+    "p_exists": 8,
+    "p_forall": 6,
+    "p_neg": 4,
+    "p_pos": 4,
+    "p_sat_agg": 8,
+    "tr_batch_size": 128
+}
 # Configurations for MindReader-100k
 # Best configuration for the baseline MF model
 best_config_mf_100k = {
@@ -141,4 +163,26 @@ best_config_genres_100k = {
     "tr_batch_size": 128,
     "wd": 0.0001,
     "threshold": 0.5
+}
+# Best configuration for the baseline FM model with movie genres as side info
+best_config_fm_100k = {
+    "alpha": 0.3,
+    "gamma": 3,
+    "k": 50,
+    "lr": 0.001,
+    "tr_batch_size": 256,
+    "wd": 0.0001,
+    "threshold": 0.5
+}
+# Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation
+best_config_ltn_100k = {
+    "k": 25,
+    "lr": 0.001,
+    "wd": 0.0001,
+    "p_exists": 10,
+    "p_forall": 8,
+    "p_neg": 2,
+    "p_pos": 2,
+    "p_sat_agg": 2,
+    "tr_batch_size": 128
 }

@@ -7,100 +7,6 @@ from sklearn.metrics import precision_recall_fscore_support, confusion_matrix, a
 from nesy.metrics import compute_metric, check_metrics
 
 
-class FocalLoss(torch.nn.Module):
-    """
-    Implementation of focal loss as in PyTorch this loss is not directly provided.
-    """
-
-    def __init__(self, alpha=0.2, gamma=2, reduction="mean"):
-        """
-        Constructor of the loss.
-
-        :param alpha: hyper-parameter to give weights to the to classes (i.e., balance them)
-        :param gamma: hyper-parameter to give a penalty to example that are hard to classify
-        :param reduction: what type of reduction to use
-        """
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.bce = torch.nn.BCELoss(reduction="none")
-        self.reduction = reduction
-
-    def forward(self, inputs, targets):
-        p = torch.sigmoid(inputs)
-        ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
-        p_t = p * targets + (1 - p) * (1 - targets)
-        loss = ce_loss * ((1 - p_t) ** self.gamma)
-
-        if self.alpha >= 0:
-            alpha_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
-            loss = alpha_t * loss
-
-        if self.reduction == "none":
-            pass
-        elif self.reduction == "mean":
-            loss = loss.mean()
-        elif self.reduction == "sum":
-            loss = loss.sum()
-        else:
-            raise ValueError(
-                f"Invalid Value for arg 'reduction': '{self.reduction} \n Supported reduction modes: "
-                f"'none', 'mean', 'sum'")
-        return loss
-
-
-class MatrixFactorization(torch.nn.Module):
-    """
-    Vanilla Matrix factorization model.
-
-    The model uses the inner product between a user and an item latent factor to get the prediction.
-
-    The model has inside two matrices: one containing the embeddings of the users of the system, one containing the
-    embeddings of the items of the system.
-    The model has inside two vectors: one containing the biases of the users of the system, one containing the biases
-    of the items of the system.
-    """
-
-    def __init__(self, n_users, n_items, n_factors, normalize=False):
-        """
-        Constructor of the matrix factorization model.
-
-        :param n_users: number of users in the dataset
-        :param n_items: number of items in the dataset
-        :param n_factors: size of embeddings for users and items
-        :param normalize: whether the output has to be normalized in [0.,1.] using sigmoid. This is used for the LTN
-        model.
-        """
-        super(MatrixFactorization, self).__init__()
-        self.u_emb = torch.nn.Embedding(n_users, n_factors)
-        self.i_emb = torch.nn.Embedding(n_items, n_factors)
-        self.u_bias = torch.nn.Embedding(n_users, 1)
-        self.i_bias = torch.nn.Embedding(n_items, 1)
-        self.normalize = normalize
-        # initialization with Glorot
-        torch.nn.init.xavier_normal_(self.u_emb.weight)
-        torch.nn.init.xavier_normal_(self.i_emb.weight)
-        torch.nn.init.xavier_normal_(self.u_bias.weight)
-        torch.nn.init.xavier_normal_(self.i_bias.weight)
-
-    def forward(self, u_idx, i_idx, dim=1):
-        """
-        It computes the scores for the given user-item pairs using inner product (dot product).
-
-        :param u_idx: users for which the score has to be computed
-        :param i_idx: items for which the score has to be computed
-        :param dim: dimension along which the dot product has to be computed
-        :return: predicted scores for given user-item pairs
-        """
-        pred = torch.sum(self.u_emb(u_idx) * self.i_emb(i_idx), dim=dim, keepdim=True)
-        # add user and item biases to the prediction
-        pred += self.u_bias(u_idx) + self.i_bias(i_idx)
-        pred = pred.squeeze()
-        if self.normalize:
-            pred = torch.sigmoid(pred)
-        return pred
-
-
 class Trainer:
     """
     Abstract base class that manages the training of the model.
@@ -302,6 +208,332 @@ class Trainer:
         results["acc"] = accuracy_score(targets, preds)
 
         return results
+
+
+class FocalLoss(torch.nn.Module):
+    """
+    Implementation of focal loss as in PyTorch this loss is not directly provided.
+    """
+
+    def __init__(self, alpha=0.2, gamma=2, reduction="mean"):
+        """
+        Constructor of the loss.
+
+        :param alpha: hyper-parameter to give weights to the to classes (i.e., balance them)
+        :param gamma: hyper-parameter to give a penalty to example that are hard to classify
+        :param reduction: what type of reduction to use
+        """
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.bce = torch.nn.BCELoss(reduction="none")
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        p = torch.sigmoid(inputs)
+        ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+        p_t = p * targets + (1 - p) * (1 - targets)
+        loss = ce_loss * ((1 - p_t) ** self.gamma)
+
+        if self.alpha >= 0:
+            alpha_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
+            loss = alpha_t * loss
+
+        if self.reduction == "none":
+            pass
+        elif self.reduction == "mean":
+            loss = loss.mean()
+        elif self.reduction == "sum":
+            loss = loss.sum()
+        else:
+            raise ValueError(
+                f"Invalid Value for arg 'reduction': '{self.reduction} \n Supported reduction modes: "
+                f"'none', 'mean', 'sum'")
+        return loss
+
+# ---------- here, it starts the implementation of Factorization machine taken from pytorch-fm ----------------------
+
+
+class FeaturesLinear(torch.nn.Module):
+    """
+    This layer computes the first-order interactions of the Factorization Machine model. It contains the biases of the
+    model. There is one bias for each user, item, and movie genre.
+    """
+    def __init__(self, field_dims, n_side_feat, output_dim=1):
+        """
+        Constructor of the layer.
+
+        :param field_dims: list of dimensions for the features used by the model. In our scenario, this list contains
+        the number of users, items, and movie genres. The model constructs an embedding for each one of these features.
+        :param n_side_feat: number of side information features. In our scenario, it is the maximum number of genres
+        that a movie could belong too. The side information features are just the index of the movie genres. Each
+        example is composed of a user index, an item index, and the indexes of movie genres.
+        :param output_dim: dimension of the output of the model.
+        """
+        super().__init__()
+        self.field_dims = field_dims
+        self.fc = torch.nn.Embedding(sum(field_dims), output_dim)
+        self.bias = torch.nn.Parameter(torch.zeros((output_dim,)))
+        self.offsets = np.array((0, *np.cumsum(field_dims)[:-1]), dtype=np.long)
+        self.offsets = np.append(self.offsets, [self.offsets[-1]] * (n_side_feat - 1))
+        torch.nn.init.xavier_uniform_(self.fc.weight.data)
+
+    def forward(self, x, dim=1):
+        """
+        In the retrieval of biases, a mask is used to mask the biases associated with the fake index added
+        to the movie genre indexes to make operations more efficient.
+
+        :param x: Long tensor of size ``(batch_size, num_fields)``. It represents the input examples composed of
+        [u, i, gs], where u is a user index, i and item index, and gs a sequence of movie genre indexes.
+        :param dim: dimension across which the operations have to be computed.
+        """
+        x = x + x.new_tensor(self.offsets).unsqueeze(0)
+        mask = torch.where(x == self.offsets[-1] + self.field_dims[-1] - 1, 0., 1.).unsqueeze_(2)
+        return torch.sum(self.fc(x) * mask, dim=dim) + self.bias
+
+
+class FeaturesEmbedding(torch.nn.Module):
+    """
+    This layer contains the embeddings to compute second-order interactions of the Factorization Machine model. There is
+    an embedding for each user, item, and movie genre.
+    """
+    def __init__(self, field_dims, embed_dim, n_side_feat):
+        """
+        Constructor of the layer.
+
+        :param field_dims: list of dimensions for the features used by the model. In our scenario, this list contains
+        the number of users, items, and movie genres. The model constructs an embedding for each one of these features.
+        :param n_side_feat: number of side information features. In our scenario, it is the maximum number of genres
+        that a movie could belong too. The side information features are just the index of the movie genres. Each
+        example is composed of a user index, an item index, and the indexes of movie genres.
+        :param embed_dim: dimension of embeddings in the model.
+        :param n_side_feat: number of side information features in input at the model. This corresponds to the maximum
+        number of genres a movie can belong to in out dataset.
+        """
+        super().__init__()
+        self.field_dims = field_dims
+        self.embedding = torch.nn.Embedding(sum(field_dims), embed_dim)
+        self.offsets = np.array((0, *np.cumsum(field_dims)[:-1]), dtype=np.long)
+        self.offsets = np.append(self.offsets, [self.offsets[-1]] * (n_side_feat - 1))
+        torch.nn.init.xavier_uniform_(self.embedding.weight.data)
+
+    def forward(self, x):
+        """
+        In the retrieval of embeddings, a mask is used to mask the embeddings associated with the fake index added
+        to the movie genre indexes to make operations more efficient.
+
+        :param x: Long tensor of size ``(batch_size, num_fields)``. It represents the input examples composed of
+        [u, i, gs], where u is a user index, i and item index, and gs a sequence of movie genre indexes.
+        """
+        x = x + x.new_tensor(self.offsets).unsqueeze(0)
+        mask = torch.where(x == self.offsets[-1] + self.field_dims[-1] - 1, 0., 1.).unsqueeze_(2)
+        return self.embedding(x) * mask
+
+
+class FactorizationMachine(torch.nn.Module):
+    """
+    This layer computes the second-order interactions of the Factorization Machine model.
+    """
+    def __init__(self, reduce_sum=True):
+        """
+        Constructor of the layer.
+
+        :param reduce_sum: whether the output has to be a summation over examples. Defaults to True as it happens
+        for Factorization Machines.
+        """
+        super().__init__()
+        self.reduce_sum = reduce_sum
+
+    def forward(self, x, dim=1):
+        """
+        This implements the closed formula presented in the original FM paper to model second-order interactions.
+
+        :param x: Float tensor of size ``(batch_size, num_fields, embed_dim)``. It contains the embeddings of input
+        users, items, and movie genres.
+        :param dim: dimension across which the operations have to be computed.
+        """
+        square_of_sum = torch.sum(x, dim=dim) ** 2
+        sum_of_square = torch.sum(x ** 2, dim=dim)
+        ix = square_of_sum - sum_of_square
+        if self.reduce_sum:
+            ix = torch.sum(ix, dim=dim, keepdim=True)
+        return 0.5 * ix
+
+
+class FactorizationMachineModel(torch.nn.Module):
+    """
+    A pytorch implementation of Factorization Machine inspired by the pytorch-fm github repository.
+    This implementation uses ordinal encoding to make operations very efficient. However, it does not support
+    multi-hot side features. We adapted the implementation in such a way to account for this.
+
+    Link to the original implementation: https://github.com/rixwew/pytorch-fm.
+
+    Reference:
+        S. Rendle, Factorization Machines, 2010.
+    """
+    def __init__(self, field_dims, embed_dim, n_side_feat):
+        """
+        Constructor of the Factorization Machine model.
+
+        :param field_dims: list of dimensions for the features used by the model. In our scenario, this list contains
+        the number of users, items, and movie genres. The model constructs an embedding for each one of these features.
+        :param n_side_feat: number of side information features. In our scenario, it is the maximum number of genres
+        that a movie could belong too. The side information features are just the index of the movie genres. Each
+        example is composed of a user index, an item index, and the indexes of movie genres.
+        :param embed_dim: dimension of embeddings in the model.
+        :param n_side_feat: number of side information features in input at the model. This corresponds to the maximum
+        number of genres a movie can belong to in out dataset.
+        """
+        super().__init__()
+        self.embedding = FeaturesEmbedding(field_dims, embed_dim, n_side_feat)
+        self.linear = FeaturesLinear(field_dims, n_side_feat)
+        self.fm = FactorizationMachine(reduce_sum=True)
+
+    def forward(self, x, dim=1):
+        """
+        This function computes a prediction of the Factorization Machine model. It computes first-order and
+        second-order interactions between features.
+
+        :param x: Float tensor of size ``(batch_size, num_fields, embed_dim)``. It contains the embeddings of input
+        users, items, and movie genres.
+        :param dim: dimension across which the operations have to be computed
+        """
+        x = self.linear(x, dim=dim) + self.fm(self.embedding(x), dim=dim)
+        return x.squeeze(1)
+
+
+class FMTrainer(Trainer):
+    """
+    Basic trainer for training a Factorization Machine model using gradient descent.
+    """
+    def __init__(self, fm_model, optimizer, loss, wandb_train=False):
+        """
+        Constructor of the trainer for the MF model.
+
+        :param fm_model: Factorization Machine model
+        :param optimizer: optimizer used for the training of the model
+        :param wandb_train: whether the data has to be logged to WandB or not
+        :param loss: loss that is used for training the Matrix Factorization model. It could be MSE or Focal Loss
+        """
+        super(FMTrainer, self).__init__(fm_model, optimizer, wandb_train)
+        self.loss = loss
+
+    def train_epoch(self, train_loader, epoch=None):
+        train_loss = 0.0
+        for batch_idx, (examples, ratings) in enumerate(train_loader):
+            self.optimizer.zero_grad()
+            loss = self.loss(self.model(examples), ratings)
+            train_loss += loss.item()
+            loss.backward()
+            self.optimizer.step()
+        return train_loss / len(train_loader), {"train_loss": train_loss / len(train_loader)}
+
+    def predict(self, x, dim=1):
+        """
+        Method for performing a prediction of the model.
+
+        :param x: tensor containing the user-item pair + side info features for which the prediction has to be computed.
+        The first position is the user index, the second position is the item index, while the last positions are
+        dedicated to the indexes of movie genres associated with the movie in the user-item interaction.
+        :param dim: dimension across which computations of the FM model have to be computed
+        :return: the prediction of the model for the given example
+        """
+        with torch.no_grad():
+            return self.model(x, dim)
+
+
+class FMTrainerClassifier(FMTrainer):
+    """
+    Trainer for training a Factorization Machine model for the binary classification task.
+
+    This version of the trainer uses the focal loss as loss function. It implements a classification task, where the
+    objective is to minimize the focal loss. The ratings are binary, hence they can be interpreted as binary classes.
+    The objective is to discriminate between class 1 ("likes") and class 0 ("dislikes"). Note the focal loss is a
+    generalization of the binary cross-entropy to deal with imbalance data.
+    """
+    def __init__(self, fm_model, optimizer, loss, wandb_train=False, threshold=0.5):
+        """
+        Constructor of the trainer for the MF model for binary classification.
+
+        :param fm_model: Factorization Machine model
+        :param optimizer: optimizer used for the training of the model
+        :param loss: loss function used to train the model
+        :param wandb_train: whether the data has to be logged to WandB or not
+        :param threshold: threshold used to determine whether an example is negative or positive (decision boundary)
+        """
+        super(FMTrainerClassifier, self).__init__(fm_model, optimizer, loss, wandb_train)
+        self.threshold = threshold
+
+    def predict(self, x, dim=1):
+        """
+        Method for performing a prediction of the model.
+
+        :param x: tensor containing the user-item pair + side info features for which the prediction has to be computed.
+        The first position is the user index, the second position is the item index, while the last positions are
+        dedicated to the indexes of movie genres associated with the movie in the user-item interaction.
+        :param dim: dimension across which computations of the FM model have to be computed
+        :return: the prediction of the model for the given example
+        """
+        # apply sigmoid because during training the losses with logits are used for numerical stability
+        preds = super().predict(x, dim)
+        preds = torch.sigmoid(preds)
+        preds = preds >= self.threshold
+        return preds
+
+
+# ------------------------ here, it ends the implementation of Factorization Machine ----------------------------
+
+
+class MatrixFactorization(torch.nn.Module):
+    """
+    Vanilla Matrix factorization model.
+
+    The model uses the inner product between a user and an item latent factor to get the prediction.
+
+    The model has inside two matrices: one containing the embeddings of the users of the system, one containing the
+    embeddings of the items of the system.
+    The model has inside two vectors: one containing the biases of the users of the system, one containing the biases
+    of the items of the system.
+    """
+
+    def __init__(self, n_users, n_items, n_factors, normalize=False):
+        """
+        Constructor of the matrix factorization model.
+
+        :param n_users: number of users in the dataset
+        :param n_items: number of items in the dataset
+        :param n_factors: size of embeddings for users and items
+        :param normalize: whether the output has to be normalized in [0.,1.] using sigmoid. This is used for the LTN
+        model.
+        """
+        super(MatrixFactorization, self).__init__()
+        self.u_emb = torch.nn.Embedding(n_users, n_factors)
+        self.i_emb = torch.nn.Embedding(n_items, n_factors)
+        self.u_bias = torch.nn.Embedding(n_users, 1)
+        self.i_bias = torch.nn.Embedding(n_items, 1)
+        self.normalize = normalize
+        # initialization with Glorot
+        torch.nn.init.xavier_normal_(self.u_emb.weight)
+        torch.nn.init.xavier_normal_(self.i_emb.weight)
+        torch.nn.init.xavier_normal_(self.u_bias.weight)
+        torch.nn.init.xavier_normal_(self.i_bias.weight)
+
+    def forward(self, u_idx, i_idx, dim=1):
+        """
+        It computes the scores for the given user-item pairs using inner product (dot product).
+
+        :param u_idx: users for which the score has to be computed
+        :param i_idx: items for which the score has to be computed
+        :param dim: dimension along which the dot product has to be computed
+        :return: predicted scores for given user-item pairs
+        """
+        pred = torch.sum(self.u_emb(u_idx) * self.i_emb(i_idx), dim=dim, keepdim=True)
+        # add user and item biases to the prediction
+        pred += self.u_bias(u_idx) + self.i_bias(i_idx)
+        pred = pred.squeeze()
+        if self.normalize:
+            pred = torch.sigmoid(pred)
+        return pred
 
 
 class MFTrainer(Trainer):

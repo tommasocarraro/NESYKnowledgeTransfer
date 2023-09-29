@@ -1,14 +1,15 @@
 import os
 from nesy.data import process_mindreader, increase_sparsity
 import pickle
-from nesy.loaders import DataLoader
-from nesy.training import mf_training, nesy_training
+from nesy.loaders import DataLoader, DataLoaderFM
+from nesy.training import mf_training, nesy_training, fm_training
 from nesy.utils import generate_report_dict, generate_report_table
 import json
 import numpy as np
 from joblib import Parallel, delayed
 from nesy.configs import best_config_nesy_100k, best_config_nesy_200k, best_config_mf_100k, best_config_mf_200k, \
-    best_config_genres_100k, best_config_genres_200k, best_config_mf_genres_100k, best_config_mf_genres_200k
+    best_config_genres_100k, best_config_genres_200k, best_config_mf_genres_100k, best_config_mf_genres_200k, \
+    best_config_fm_100k, best_config_fm_200k, best_config_ltn_100k, best_config_ltn_200k
 
 
 def create_dataset(seed, percentages, data_path, version):
@@ -36,7 +37,8 @@ def create_dataset(seed, percentages, data_path, version):
             pickle.dump(data, dataset_file)
 
 
-def train_model(seed, p, model, config_mf, config_mf_genres, config_nesy, source_config, exp_name):
+def train_model(seed, p, model, config_mf, config_mf_genres, config_fm, config_ltn, config_nesy, source_config,
+                exp_name):
     """
     It trains the given model with the correct hyper-parameter configuration on the given fold, denoted as p.
     If model == "nesy", the source config is used to pre-train an MF model on the source domain.
@@ -48,6 +50,7 @@ def train_model(seed, p, model, config_mf, config_mf_genres, config_nesy, source
     :param config_mf: hyper-parameter configuration for the training of the baseline MF model
     :param config_mf_genres: hyper-parameter configuration for the training of the baseline MF model with the addition
     of genre latent factors
+    :param config_fm: hyper-parameter configuration for the training of the baseline FM model
     :param config_nesy: hyper-parameter configuration for the training of the Neuro-Symbolic model
     :param source_config: hyper-parameter configuration for pre-training the MF model on the source domain when
     model == "nesy"
@@ -68,13 +71,28 @@ def train_model(seed, p, model, config_mf, config_mf_genres, config_nesy, source
             _, test_result = mf_training(seed, data["p"][p], data["i_val"], data["n_users"], data["n_items"],
                                          config_mf, metric="fbeta-1.0", test_loader=test_loader,
                                          path="%s/models/%s.pth" % (exp_name, file_name))
+        elif model == "FM":
+            # train the Factorization Machine model model
+            test_loader = DataLoaderFM(data["i_test"], data["genres_test"], 256)
+            test_result = fm_training(seed, data["p"][p], data["genres_tr"], data["i_val"], data["genres_val"],
+                                      data["n_users"], data["n_items"],
+                                      data["n_genres"], data["genres_tr"].shape[1],
+                                      config_fm, metric="fbeta-1.0", test_loader=test_loader,
+                                      path="%s/models/%s.pth" % (exp_name, file_name))
         elif model == 'MF_genres':
+            # train the Matrix Factorization model with the addition of genres latent factors
             # note the genre ratings are added to the training set
             # note the number of items for the MF model becomes n_genres + n_items because we added genres
             _, test_result = mf_training(seed, np.append(data["p"][p], data["mf_g_ratings"], axis=0), data["i_val"],
                                          data["n_users"], data["n_items"] + data["n_genres"],
                                          config_mf_genres, metric="fbeta-1.0", test_loader=test_loader,
                                          path="%s/models/%s.pth" % (exp_name, file_name))
+        elif model == 'LTN':
+            # train the baseline LTN model from paper "Logic Tensor Networks for Top-N Recommendation"
+            test_result = nesy_training(seed, data["p"][p], data["i_val"], data["n_users"], data["n_items"],
+                                        data["i_g_matrix"], data["u_g_matrix"], config_ltn,
+                                        metric="fbeta-1.0", test_loader=test_loader,
+                                        path="%s/models/%s.pth" % (exp_name, file_name))
         else:
             # pre-train an MF model on the source domain
             user_genres_matrix, _ = mf_training(seed, data["g_tr"], data["g_val"], data["n_users"], data["n_genres"],
@@ -82,13 +100,17 @@ def train_model(seed, p, model, config_mf, config_mf_genres, config_nesy, source
                                                 path="%s/models/%s.pth" % (exp_name, "source-seed-%d" %
                                                                            (seed,)))
             # train the Neuro-Symbolic model
-            test_result = nesy_training(seed, data["p"][p], data["i_val"], data["n_users"], data["n_items"],
-                                        data["i_g_matrix"], user_genres_matrix, config_nesy,
-                                        metric="fbeta-1.0", test_loader=test_loader,
-                                        path="%s/models/%s.pth" % (exp_name, file_name))
+            test_result, time = nesy_training(seed, data["p"][p], data["i_val"], data["n_users"], data["n_items"],
+                                              data["i_g_matrix"], user_genres_matrix, config_nesy,
+                                              metric="fbeta-1.0", test_loader=test_loader,
+                                              path="%s/models/%s.pth" % (exp_name, file_name))
         # save result to disk
         with open("%s/results/%s.json" % (exp_name, file_name), "w") as outfile:
             json.dump(test_result, outfile, indent=4)
+
+        # save time to disk
+        # with open("%s/times/%s.txt" % (exp_name, file_name), "w") as outfile:
+        #     outfile.write(time)
 
 
 def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'MF-genres', 'nesy'), starting_seed=0,
@@ -127,6 +149,7 @@ def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'MF
             os.mkdir(os.path.join(exp_name, "datasets"))
             os.mkdir(os.path.join(exp_name, "models"))
             os.mkdir(os.path.join(exp_name, "results"))
+            os.mkdir(os.path.join(exp_name, "times"))
 
         # create datasets for the experiment
         Parallel(n_jobs=n_jobs)(
@@ -135,7 +158,10 @@ def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'MF
 
         # perform training of the models and get results on the test set
         Parallel(n_jobs=n_jobs)(
-            delayed(train_model)(seed, p, m, config_dict[dataset_version]["mf"], config_dict[dataset_version]["mf_genres"],
+            delayed(train_model)(seed, p, m, config_dict[dataset_version]["mf"],
+                                 config_dict[dataset_version]["mf_genres"],
+                                 config_dict[dataset_version]["fm"],
+                                 config_dict[dataset_version]["ltn"],
                                  config_dict[dataset_version]["nesy"], config_dict[dataset_version]["source"], exp_name)
             for seed in range(starting_seed, starting_seed + n_runs)
             for p in percentages
@@ -149,6 +175,8 @@ def run_experiment(exp_name, config_dict, percentages=(1.00,), models=('MF', 'MF
                                    "neg_f": "\\texttt{F1-measure}"},
                                   {"MF": "$\\operatorname{MF}$",
                                    "MF_genres": "$\\operatorname{MF_{genres}}$",
+                                   "FM": "$\\operatorname{FM}$",
+                                   "LTN": "\\operatorname{LTN}",
                                    "nesy": "$\\operatorname{NESY_{MF}}$"}, models=models)
     # save table to disk
     with open(os.path.join(exp_name, "report-table.txt"), "w") as table_file:
@@ -166,20 +194,32 @@ if __name__ == "__main__":
             "source": best_config_genres_100k,
             "mf": best_config_mf_100k,
             "mf_genres": best_config_mf_genres_100k,
+            "fm": best_config_fm_100k,
+            "ltn": best_config_ltn_100k,
             "nesy": best_config_nesy_100k
         },
         'mindreader-200k': {
             "source": best_config_genres_200k,
             "mf": best_config_mf_200k,
             "mf_genres": best_config_mf_genres_200k,
+            "fm": best_config_fm_200k,
+            "ltn": best_config_ltn_200k,
             "nesy": best_config_nesy_200k
         }
     }
     # perform the experiments on MindReader-200k
-    run_experiment("exp-mindreader-200k", config_dict=configs, percentages=(1.0, 0.5, 0.2, 0.1, 0.05),
-                   models=('MF', 'MF-genres', 'nesy'), starting_seed=0, n_runs=30, dataset_version="mindreader-200k",
-                   n_jobs=os.cpu_count())
+    run_experiment("uploaded-exp/uploaded-exp-mindreader-200k", config_dict=configs, percentages=(1.0, 0.5, 0.2, 0.1, 0.05),
+                   models=('MF', 'MF_genres', 'FM', 'LTN', 'nesy'), starting_seed=0, n_runs=30,
+                   dataset_version="mindreader-200k", n_jobs=os.cpu_count(), just_report=True)
     # # perform the experiments on MindReader-100k
-    run_experiment("exp-mindreader-100k", config_dict=configs, percentages=(1.0, 0.5, 0.2, 0.1, 0.05),
-                   models=('MF', 'MF-genres', 'nesy'), starting_seed=0, n_runs=30, dataset_version="mindreader-100k",
-                   n_jobs=os.cpu_count())
+    run_experiment("uploaded-exp/uploaded-exp-mindreader-100k", config_dict=configs, percentages=(1.0, 0.5, 0.2, 0.1, 0.05),
+                   models=('MF', 'MF_genres', 'FM', 'LTN', 'nesy'), starting_seed=0, n_runs=30,
+                   dataset_version="mindreader-100k", n_jobs=os.cpu_count(), just_report=True)
+    # from pathlib import Path
+    # times = []
+    # files = Path("exp-mindreader-100k/times").glob('*')
+    # for file in files:
+    #     with open(file) as result_file:
+    #         times.append(float(result_file.readline()))
+    # print(np.mean(times))
+    # print(np.std(times))
