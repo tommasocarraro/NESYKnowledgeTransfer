@@ -14,7 +14,6 @@ class Trainer:
     Each model implementation must inherit from this class and implement the train_epoch() method. It is also possible
     to use overloading to redefine the behavior of some methods.
     """
-
     def __init__(self, model, optimizer, wandb_train=False):
         """
         Constructor of the trainer.
@@ -214,7 +213,6 @@ class FocalLoss(torch.nn.Module):
     """
     Implementation of focal loss as in PyTorch this loss is not directly provided.
     """
-
     def __init__(self, alpha=0.2, gamma=2, reduction="mean"):
         """
         Constructor of the loss.
@@ -266,8 +264,8 @@ class FeaturesLinear(torch.nn.Module):
         :param field_dims: list of dimensions for the features used by the model. In our scenario, this list contains
         the number of users, items, and movie genres. The model constructs an embedding for each one of these features.
         :param n_side_feat: number of side information features. In our scenario, it is the maximum number of genres
-        that a movie could belong too. The side information features are just the index of the movie genres. Each
-        example is composed of a user index, an item index, and the indexes of movie genres.
+        that a movie can belong to. The side information features are just the indexes of the movie genres. Each
+        example is composed of a user index, an item index, and the indexes of movie genres associated with the item.
         :param output_dim: dimension of the output of the model.
         """
         super().__init__()
@@ -304,8 +302,8 @@ class FeaturesEmbedding(torch.nn.Module):
         :param field_dims: list of dimensions for the features used by the model. In our scenario, this list contains
         the number of users, items, and movie genres. The model constructs an embedding for each one of these features.
         :param n_side_feat: number of side information features. In our scenario, it is the maximum number of genres
-        that a movie could belong too. The side information features are just the index of the movie genres. Each
-        example is composed of a user index, an item index, and the indexes of movie genres.
+        that a movie can belong to. The side information features are just the indexes of the movie genres. Each
+        example is composed of a user index, an item index, and the indexes of movie genres associated with the item.
         :param embed_dim: dimension of embeddings in the model.
         :param n_side_feat: number of side information features in input at the model. This corresponds to the maximum
         number of genres a movie can belong to in out dataset.
@@ -364,42 +362,50 @@ class FactorizationMachineModel(torch.nn.Module):
     """
     A pytorch implementation of Factorization Machine inspired by the pytorch-fm github repository.
     This implementation uses ordinal encoding to make operations very efficient. However, it does not support
-    multi-hot side features. We adapted the implementation in such a way to account for this.
+    multi-hot side information features. We adapted the implementation in such a way to account for this.
 
     Link to the original implementation: https://github.com/rixwew/pytorch-fm.
 
     Reference:
         S. Rendle, Factorization Machines, 2010.
     """
-    def __init__(self, field_dims, embed_dim, n_side_feat):
+    def __init__(self, field_dims, embed_dim, n_side_feat, normalize=False):
         """
         Constructor of the Factorization Machine model.
 
         :param field_dims: list of dimensions for the features used by the model. In our scenario, this list contains
         the number of users, items, and movie genres. The model constructs an embedding for each one of these features.
         :param n_side_feat: number of side information features. In our scenario, it is the maximum number of genres
-        that a movie could belong too. The side information features are just the index of the movie genres. Each
-        example is composed of a user index, an item index, and the indexes of movie genres.
+        that a movie can belong to. The side information features are just the indexes of the movie genres. Each
+        example is composed of a user index, an item index, and the indexes of movie genres associated with the item.
         :param embed_dim: dimension of embeddings in the model.
-        :param n_side_feat: number of side information features in input at the model. This corresponds to the maximum
-        number of genres a movie can belong to in out dataset.
+        :param normalize: whether the predictions of the model have to be normalize between 0 and 1. Default to False.
         """
         super().__init__()
         self.embedding = FeaturesEmbedding(field_dims, embed_dim, n_side_feat)
         self.linear = FeaturesLinear(field_dims, n_side_feat)
         self.fm = FactorizationMachine(reduce_sum=True)
+        self.normalize = normalize
 
-    def forward(self, x, dim=1):
+    def forward(self, x, x2=None, x3=None, dim=1):
         """
         This function computes a prediction of the Factorization Machine model. It computes first-order and
         second-order interactions between features.
 
-        :param x: Float tensor of size ``(batch_size, num_fields, embed_dim)``. It contains the embeddings of input
-        users, items, and movie genres.
+        :param x: Long tensor of size ``(batch_size, num_fields)``. It represents the input examples composed of
+        [u, i, gs], where u is a user index, i and item index, and gs a sequence of movie genre indexes.
+        :param x2: it is used when training the model with LTN. It contains item indexes
+        :param x3: it is used when training the model with LTN. It contains genre indexes
         :param dim: dimension across which the operations have to be computed
         """
+        if x2 is not None:
+            x = torch.hstack([x.unsqueeze(1), x2.unsqueeze(1), x3])
         x = self.linear(x, dim=dim) + self.fm(self.embedding(x), dim=dim)
-        return x.squeeze(1)
+        if self.normalize:
+            x = torch.sigmoid(x.squeeze(1))
+        else:
+            x = x.squeeze(1)
+        return x
 
 
 class FMTrainer(Trainer):
@@ -439,7 +445,7 @@ class FMTrainer(Trainer):
         :return: the prediction of the model for the given example
         """
         with torch.no_grad():
-            return self.model(x, dim)
+            return self.model(x, dim=dim)
 
 
 class FMTrainerClassifier(FMTrainer):
@@ -495,7 +501,6 @@ class MatrixFactorization(torch.nn.Module):
     The model has inside two vectors: one containing the biases of the users of the system, one containing the biases
     of the items of the system.
     """
-
     def __init__(self, n_users, n_items, n_factors, normalize=False):
         """
         Constructor of the matrix factorization model.
@@ -540,7 +545,6 @@ class MFTrainer(Trainer):
     """
     Basic trainer for training a Matrix Factorization model using gradient descent.
     """
-
     def __init__(self, mf_model, optimizer, loss, wandb_train=False):
         """
         Constructor of the trainer for the MF model.
@@ -573,7 +577,6 @@ class MFTrainerClassifier(MFTrainer):
     The objective is to discriminate between class 1 ("likes") and class 0 ("dislikes"). Note the focal loss is a
     generalization of the binary cross-entropy to deal with imbalance data.
     """
-
     def __init__(self, mf_model, optimizer, loss, wandb_train=False, threshold=0.5):
         """
         Constructor of the trainer for the MF model for binary classification.
@@ -605,11 +608,11 @@ class MFTrainerClassifier(MFTrainer):
 
 class LTNTrainer(Trainer):
     """
-    Trainer for the training of the Neuro-Symbolic approach. This approach uses axiomatic knowledge to transfer
-    pre-trained information from the source domain to the target domain. Note that the axiom that transfer knowledge
-    is added to the loss from epoch five. Notice also the axioms is applied to unknown user-item pairs.
+    Trainer for the training of the Neuro-Symbolic approach with MF as the recommendation model. This approach uses
+    axiomatic knowledge to transfer pre-trained information from the source domain to the target domain. Note that the
+    axiom that transfer knowledge is added to the loss from epoch five. Notice also the axioms is applied to unknown
+    user-item pairs.
     """
-
     def __init__(self, mf_model, optimizer, u_g_matrix, i_g_matrix, p_pos=2, p_neg=2, p_sat_agg=2, p_forall=2,
                  p_exists=2, wandb_train=False, threshold=0.5):
         """
@@ -698,5 +701,104 @@ class LTNTrainer(Trainer):
         :return: the prediction of the model for the given user-item pair
         """
         preds = super().predict(x, dim)
+        preds = preds >= self.threshold
+        return preds
+
+
+class LTNTrainerFM(Trainer):
+    """
+    Trainer for the training of the Neuro-Symbolic approach with the FM as the recommendation model. This approach uses
+    axiomatic knowledge to transfer pre-trained information from the source domain to the target domain. Note that the
+    axiom that transfer knowledge is added to the loss from epoch five. Notice also the axioms is applied to unknown user-item pairs.
+    """
+    def __init__(self, fm_model, optimizer, u_g_matrix, i_g_matrix, p_pos=2, p_neg=2, p_sat_agg=2, p_forall=2,
+                 p_exists=2, wandb_train=False, threshold=0.5):
+        """
+        Constructor of the trainer for the Neuro-Symbolic model.
+
+        :param fm_model: Factorization Machine model to implement the Likes predicate
+        :param optimizer: optimizer used for the training of the model
+        :param u_g_matrix: users X genres matrix, containing the ratings predicted for each user-genre pair in the
+        source domain. This is the pre-trained model. It is the G matrix in the paper
+        :param i_g_matrix: items X genres matrix, containing a 1 if the item i belongs to genre j, 0 otherwise. It is
+        used to implement the HasGenre predicate
+        :param p_pos: hyper-parameter p for universal quantifier aggregator used on positive user-item pairs (Axiom 1)
+        :param p_neg: hyper-parameter p for universal quantifier aggregator used on negative user-item pairs (Axiom 2)
+        :param p_sat_agg: hyper-parameter p for universal quantifier aggregator used in the sat agg operator
+        :param p_forall: hyper-parameter p for universal quantifier aggregator used on the formula that enables
+        domain adaptation (Axiom 3)
+        :param p_exists: hyper-parameter p for existential quantifier aggregator used on on the formula that enables
+        domain adaptation (Axiom 3)
+        :param wandb_train: whether the training information has to be logged on WandB or not
+        :param threshold: threshold used for the decision boundary
+        """
+        super(LTNTrainerFM, self).__init__(fm_model, optimizer, wandb_train)
+        self.Not = ltn.Connective(ltn.fuzzy_ops.NotStandard())
+        self.And = ltn.Connective(ltn.fuzzy_ops.AndProd())
+        self.Implies = ltn.Connective(ltn.fuzzy_ops.ImpliesReichenbach())
+        self.Likes = ltn.Predicate(fm_model)
+        self.LikesGenre = ltn.Predicate(func=lambda u_idx, g_idx: u_g_matrix[u_idx, g_idx])
+        self.genres = ltn.Variable("genres", torch.tensor(range(u_g_matrix.shape[1])), add_batch_dim=False)
+        self.HasGenre = ltn.Predicate(func=lambda i_idx, g_idx: i_g_matrix[i_idx, g_idx])
+        self.Forall = ltn.Quantifier(ltn.fuzzy_ops.AggregPMeanError(), quantifier='f')
+        self.Exists = ltn.Quantifier(ltn.fuzzy_ops.AggregPMean(), quantifier='e')
+        self.SatAgg = ltn.fuzzy_ops.SatAgg(ltn.fuzzy_ops.AggregPMeanError(p=p_sat_agg))
+        self.p_forall = p_forall
+        self.p_exists = p_exists
+        self.p_pos = p_pos
+        self.p_neg = p_neg
+        self.threshold = threshold
+
+    def train_epoch(self, train_loader, epoch=None):
+        train_loss, train_sat_agg, f1_sat, f2_sat, f3_sat, f3 = 0.0, 0.0, [], [], [], None
+        for batch_idx, (u_pos, i_pos, g_pos, u_neg, i_neg, g_neg, u_ukn, i_ukn, g_ukn) in enumerate(train_loader):
+            self.optimizer.zero_grad()
+            if epoch > 5:
+                # compute SAT level of third formula
+                f3 = self.Forall(ltn.diag(u_ukn, i_ukn, g_ukn),
+                                 self.Implies(
+                                     self.Exists(self.genres,
+                                                 self.And(
+                                                     self.Not(self.LikesGenre(u_ukn, self.genres)),
+                                                     self.HasGenre(i_ukn, self.genres)
+                                                 ), p=self.p_exists),
+                                     self.Not(self.Likes(u_ukn, i_ukn, g_ukn))),
+                                 p=self.p_forall)
+                f3_sat.append(f3.value.item())
+            if u_pos is not None and u_neg is not None:
+                f1 = self.Forall(ltn.diag(u_pos, i_pos, g_pos), self.Likes(u_pos, i_pos, g_pos), p=self.p_pos)
+                f2 = self.Forall(ltn.diag(u_neg, i_neg, g_neg), self.Not(self.Likes(u_neg, i_neg, g_neg)), p=self.p_neg)
+                f1_sat.append(f1.value.item())
+                f2_sat.append(f2.value.item())
+                train_sat = self.SatAgg(f1, f2, f3) if epoch > 5 else self.SatAgg(f1, f2)
+            elif u_pos is not None:
+                f1 = self.Forall(ltn.diag(u_pos, i_pos, g_pos), self.Likes(u_pos, i_pos, g_pos), p=self.p_pos).value
+                f1_sat.append(f1.item())
+                train_sat = self.SatAgg(f1, f3) if epoch > 5 else f1
+            else:
+                f2 = self.Forall(ltn.diag(u_neg, i_neg, g_neg), self.Not(self.Likes(u_neg, i_neg, g_neg)), p=self.p_neg).value
+                f2_sat.append(f2.item())
+                train_sat = self.SatAgg(f2, f3) if epoch > 5 else f2
+            train_sat_agg += train_sat.item()
+            loss = 1. - train_sat
+            loss.backward()
+            self.optimizer.step()
+            train_loss += loss.item()
+        return train_loss / len(train_loader), {"training_overall_sat": train_sat_agg / len(train_loader),
+                                                "pos_sat": np.mean(f1_sat),
+                                                "neg_sat": np.mean(f2_sat),
+                                                "f3_sat": np.mean(f3_sat) if f3_sat else -1.}
+
+    def predict(self, x, dim=1):
+        """
+        Method for performing a prediction of the model.
+
+        :param x: tensor containing the user-item pair for which the prediction has to be computed. The first position
+        is the user index, while the second position is the item index
+        :param dim: dimension across which the dot product of the MF has to be computed
+        :return: the prediction of the model for the given user-item pair
+        """
+        with torch.no_grad():
+            preds = self.model(x, dim=dim)
         preds = preds >= self.threshold
         return preds

@@ -111,15 +111,39 @@ best_config_fm_200k = {
 }
 # Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation
 best_config_ltn_200k = {
-    "k": 25,
+    "k": 50,
     "lr": 0.001,
     "wd": 0.00005,
     "p_exists": 8,
     "p_forall": 6,
     "p_neg": 4,
     "p_pos": 4,
-    "p_sat_agg": 8,
+    "p_sat_agg": 2,  # era 8
     "tr_batch_size": 128
+}
+# Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation" with FM as model
+best_config_ltn_fm_200k = {
+    "k": 25,
+    "lr": 0.001,
+    "wd": 0.00005,
+    "p_exists": 4,
+    "p_forall": 8,
+    "p_neg": 10,
+    "p_pos": 8,
+    "p_sat_agg": 2,
+    "tr_batch_size": 256
+}
+# Best configuration for the proposed NeSy model with Factorization Machine as recommendation model
+best_config_nesy_fm_200k = {
+    "k": 50,
+    "lr": 0.0001,
+    "wd": 0.00005,
+    "p_exists": 4,
+    "p_forall": 10,
+    "p_neg": 8,
+    "p_pos": 8,
+    "p_sat_agg": 2,
+    "tr_batch_size": 64
 }
 # Configurations for MindReader-100k
 # Best configuration for the baseline MF model
@@ -174,7 +198,7 @@ best_config_fm_100k = {
     "wd": 0.0001,
     "threshold": 0.5
 }
-# Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation
+# Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation"
 best_config_ltn_100k = {
     "k": 25,
     "lr": 0.001,
@@ -185,4 +209,28 @@ best_config_ltn_100k = {
     "p_pos": 2,
     "p_sat_agg": 2,
     "tr_batch_size": 128
+}
+# Best configuration for the baseline LTN model from "Logic Tensor Networks for Top-N Recommendation" with FM as model
+best_config_ltn_fm_100k = {
+    "k": 50,
+    "lr": 0.001,
+    "wd": 0.001,
+    "p_exists": 6,
+    "p_forall": 10,
+    "p_neg": 2,
+    "p_pos": 4,
+    "p_sat_agg": 2,
+    "tr_batch_size": 256
+}
+# Best configuration for the proposed NeSy model with Factorization Machine as recommendation model
+best_config_nesy_fm_100k = {
+    "k": 25,
+    "lr": 0.001,
+    "wd": 0.0001,
+    "p_exists": 4,
+    "p_forall": 8,
+    "p_neg": 10,
+    "p_pos": 4,
+    "p_sat_agg": 8,
+    "tr_batch_size": 64
 }

@@ -70,7 +70,8 @@ def generate_report_dict(results_path, metrics):
             for k in result_dict[model][p]:
                 result_dict[model][p][k] = str(np.mean(result_dict[model][p][k])) + " +/- " + str(np.std(result_dict[model][p][k]))
 
-    with open(os.path.join(results_path.replace("/results", ""), "results.json"), 'w') as fp:
+    with open(os.path.join(results_path.replace("/" + results_path.split("/")[-1], ""),
+                           results_path.split("/")[-1] + ".json"), 'w') as fp:
         json.dump(result_dict, fp, indent=4)
 
 

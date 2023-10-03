@@ -177,6 +177,7 @@ def process_mindreader(seed, version, genre_val_size=0.2, genre_user_level_split
     # get list of genre indexes for each interaction of the training dataset - this serves for training Factorization
     # Machine with movie genres as side information
     get_genre_ids = lambda idx: torch.tensor(i_g_matrix[idx].nonzero()[1])
+    genres_for_each_movie = list(map(get_genre_ids, range(n_items)))
     genres_for_tr_interactions = list(map(get_genre_ids, train_set_small["uri"]))
     genres_for_val_interactions = list(map(get_genre_ids, val_set["uri"]))
     genres_for_test_interactions = list(map(get_genre_ids, test_set["uri"]))
@@ -225,10 +226,12 @@ def process_mindreader(seed, version, genre_val_size=0.2, genre_user_level_split
     genres_for_tr_interactions = pad_tensors(genres_for_tr_interactions)
     genres_for_val_interactions = pad_tensors(genres_for_val_interactions)
     genres_for_test_interactions = pad_tensors(genres_for_test_interactions)
+    genres_for_each_movie = pad_tensors(genres_for_each_movie)
 
     return {"n_users": n_users, "n_genres": n_genres, "n_items": n_items, "g_tr": g_train_set.to_numpy(),
             "g_val": g_val_set.to_numpy(), "i_tr": train_set.to_numpy(), "i_tr_small": train_set_small.to_numpy(),
             "i_val": val_set.to_numpy(), "i_test": test_set.to_numpy(),
             "i_g_matrix": torch.tensor(i_g_matrix.toarray()), "mf_g_ratings": mf_genre_ratings.to_numpy(),
             "genres_tr": genres_for_tr_interactions, "genres_val": genres_for_val_interactions,
-            "genres_test": genres_for_test_interactions, "u_g_matrix": u_g_matrix_for_ltn}
+            "genres_test": genres_for_test_interactions, "u_g_matrix": u_g_matrix_for_ltn,
+            "genres_all": genres_for_each_movie}

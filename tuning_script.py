@@ -1,4 +1,4 @@
-from nesy.tuning import mf_tuning, nesy_tuning, fm_tuning
+from nesy.tuning import mf_tuning, nesy_tuning, fm_tuning, nesy_tuning_fm
 from nesy.configs import SWEEP_CONFIG_NESY, SWEEP_CONFIG_MF, SWEEP_CONFIG_MF_SOURCE
 from nesy.data import process_mindreader
 from nesy.configs import best_config_genres_100k, best_config_genres_200k
@@ -45,13 +45,33 @@ def tune_model(model, seed, data, exp_name, folder_name, sweep_id=None):
         # train MF model on the source domain
         user_genres_matrix, _ = mf_training(seed, data["g_tr"], data["g_val"], data["n_users"], data["n_genres"],
                                             config, metric="fbeta-0.5", get_genre_matrix=True,
-                                            path="%s/%s.pth" % (folder_name, "tuning_nesy-source-seed-%d" %
-                                                                (seed,)))
+                                            path="%s/%s-%s.pth" % (folder_name, exp_name, "tuning-nesy-source-seed-%d" %
+                                                                   (seed,)))
         nesy_tuning(seed, SWEEP_CONFIG_NESY, data["i_tr_small"], data["i_val"], data["n_users"], data["n_items"],
                     data["i_g_matrix"], user_genres_matrix, 'fbeta-1.0', sweep_id, exp_name)
+    if model == "nesy-fm":
+        if exp_name.split("-")[-1] == "100k":
+            config = best_config_genres_100k
+        else:
+            config = best_config_genres_200k
+        # train MF model on the source domain
+        user_genres_matrix, _ = mf_training(seed, data["g_tr"], data["g_val"], data["n_users"], data["n_genres"],
+                                            config, metric="fbeta-0.5", get_genre_matrix=True,
+                                            path="%s/%s-%s.pth" % (folder_name, exp_name, "tuning-nesy-source-seed-%d" %
+                                                                   (seed,)))
+        nesy_tuning_fm(seed, SWEEP_CONFIG_NESY, data["i_tr_small"], data["genres_tr"], data["i_val"],
+                       data["genres_val"], data["genres_all"], data["n_users"], data["n_items"], data["n_genres"],
+                       data["genres_tr"].shape[1], data["i_g_matrix"], user_genres_matrix, 'fbeta-1.0', sweep_id,
+                       exp_name)
     if model == "ltn":
         nesy_tuning(seed, SWEEP_CONFIG_NESY, data["i_tr_small"], data["i_val"], data["n_users"], data["n_items"],
                     data["i_g_matrix"], data["u_g_matrix"], 'fbeta-1.0', sweep_id, exp_name)
+
+    if model == "ltn-fm":
+        nesy_tuning_fm(seed, SWEEP_CONFIG_NESY, data["i_tr_small"], data["genres_tr"], data["i_val"],
+                       data["genres_val"], data["genres_all"], data["n_users"], data["n_items"], data["n_genres"],
+                       data["genres_tr"].shape[1], data["i_g_matrix"], data["u_g_matrix"], 'fbeta-1.0', sweep_id,
+                       exp_name)
 
 
 if __name__ == "__main__":
@@ -61,7 +81,7 @@ if __name__ == "__main__":
     # create MindReader-100k and MindReader-200k
     data_100k = process_mindreader(0, version='mindreader-100k')
     data_200k = process_mindreader(0, version='mindreader-200k')
-    models = ('source', 'mf', 'mf-genres', 'fm', 'ltn', 'nesy')
+    models = ('source', 'mf', 'mf-genres', 'fm', 'ltn', 'ltn-fm', 'nesy', 'nesy-fm')
     # hyper-parameter tuning for each model on both MindReader-100k and MindReader-200k
     for m in models:
         tune_model(m, 0, data_100k, 'tuning-mindreader-100k', "tuning")
