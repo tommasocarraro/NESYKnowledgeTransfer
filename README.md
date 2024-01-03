@@ -1,7 +1,6 @@
 # Mitigating Data Sparsity via Neuro-Symbolic Knowledge Transfer
 
-This repository contains the implementation for the paper "Mitigating Data Sparsity via Neuro-Symbolic Knowledge Transfer". The entire code has been well documented to allow reviewers to understand 
-the logic if needed.
+This repository contains the implementation for the paper "Mitigating Data Sparsity via Neuro-Symbolic Knowledge Transfer" published at the 46th European Conference on Information Retrieval (ECIR'24). The entire code has been well documented to allow reviewers and researchers to understand the logic if needed.
 
 ### Directory structure
 
